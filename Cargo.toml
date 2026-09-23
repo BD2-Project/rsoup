@@ -1,0 +1,17 @@
+[package]
+name = "rsoup"
+version = "0.1.0"
+edition = "2021"
+description = "Driver Rust para SoupDB (gestor de base de datos multimodal)"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+anyhow = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[[bin]]
+name = "rsoup"
+path = "src/main.rs"
