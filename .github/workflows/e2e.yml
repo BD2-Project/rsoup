@@ -20,7 +20,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    if: ${{ inputs.run_e2e != false && vars.RSOUP_E2E_DISABLED != 'true' }}
+    if: ${{ github.event.inputs.run_e2e != 'false' && vars.RSOUP_E2E_DISABLED != 'true' }}
     steps:
       - uses: actions/checkout@v4
         with:
