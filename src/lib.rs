@@ -2,6 +2,7 @@
 
 pub mod connection_manager;
 pub mod protocol;
+pub mod scenarios;
 pub mod tcp_server;
 pub mod transaction_manager;
 
