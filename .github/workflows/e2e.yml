@@ -1,0 +1,90 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: "Ejecutar el E2E punta a punta (gestor real + driver)"
+        type: boolean
+        default: true
+  pull_request:
+    branches: [main]
+
+# Activado por defecto. Para desactivarlo globalmente, crear la variable de
+# repositorio RSOUP_E2E_DISABLED=true; en ejecuciones manuales, el input
+# run_e2e=false lo desactiva.
+concurrency:
+  group: e2e
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.run_e2e != 'false' && vars.RSOUP_E2E_DISABLED != 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout gestor SoupDB
+        uses: actions/checkout@v4
+        with:
+          repository: BD2-Project/SoupDB
+          ref: dev
+          path: gestor
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Instalar dependencias del gestor
+        working-directory: gestor
+        run: uv sync --all-groups
+
+      - name: Sembrar base de datos (accounts)
+        working-directory: gestor
+        run: |
+          mkdir -p /tmp/soupdb_e2e
+          uv run python -c "
+          from engine.common.catalog import Catalog
+          from engine.query import execute_sql
+          c = Catalog('/tmp/soupdb_e2e')
+          execute_sql('CREATE TABLE accounts (id INT, balance INT)', c)
+          execute_sql('INSERT INTO accounts VALUES (1, 100)', c)
+          execute_sql('INSERT INTO accounts VALUES (2, 200)', c)
+          c.close()
+          print('seed ok')
+          "
+
+      - name: Arrancar el gestor (puerto 55499)
+        working-directory: gestor
+        env:
+          SOUP_DB_PATH: /tmp/soupdb_e2e
+          DRIVER_PORT: "55499"
+        run: |
+          nohup uv run python scripts/run_server.py > /tmp/gestor.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if grep -q "escuchando" /tmp/gestor.log 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cat /tmp/gestor.log
+
+      - name: Compilar el driver
+        run: cargo build
+
+      - name: Ejecutar escenarios punta a punta
+        env:
+          DRIVER_HOST: "127.0.0.1"
+          DRIVER_PORT: "55499"
+        run: |
+          for scenario in ping select commit rollback error; do
+            ./target/debug/soup_tui --host "$DRIVER_HOST" --port "$DRIVER_PORT" --scenario "$scenario"
+          done
+
+      - name: Limpiar el gestor
+        if: always()
+        run: pkill -f run_server.py || true

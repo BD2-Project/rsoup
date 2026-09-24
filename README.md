@@ -19,7 +19,19 @@ Driver **Rust** para SoupDB: conecta clientes al pool de conexiones del gestor (
 | `src/tcp_server.rs` | Gestión de sockets TCP (tokio): connect, read_frame / write_frame |
 | `src/connection_manager.rs` | `Connection`: operaciones de alto nivel (query, begin, commit, rollback) |
 | `src/transaction_manager.rs` | `TransactionManager` / `Transaction`: API de transacciones del cliente |
+| `src/scenarios.rs` | Escenarios preconfigurados (ping, select, commit, rollback, error) |
+| `src/bin/soup_tui.rs` | Demo TUI (ratatui) automatizable con `--scenario` |
 | `src/main.rs` | Binario demo que conecta al gestor y ejecuta SQL/transacciones |
+
+## Demo TUI automatizable (`soup_tui`)
+
+```bash
+cargo run --bin soup_tui                # TUI interactiva
+cargo run --bin soup_tui -- --list      # lista los escenarios
+cargo run --bin soup_tui -- --scenario ping   # headless (exit 0/1)
+```
+
+Escenarios: `ping`, `select`, `commit`, `rollback`, `error` — verifica conexión, consulta, transacciones (COMMIT persiste / ROLLBACK no persiste) y errores. Conecta a `DRIVER_HOST`/`DRIVER_PORT` (default `127.0.0.1:55432`).
 
 ## Uso desde Tauri (frontend SoupChef)
 
@@ -69,5 +81,13 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+- **Unit** (`src/*`): codec del protocolo y helpers.
+- **Integración self-contained** (`tests/mock_gestor.rs`): el driver contra un gestor simulado (sockets reales, protocolo v1).
+- **E2E punta a punta** (`.github/workflows/e2e.yml`): arranca el gestor real (SoupDB) y ejecuta los 5 escenarios.
+
+> Los tests intensivos están **activos por defecto**. Para desactivarlos:
+> - `RSOUP_SKIP_INTEGRATION=1 cargo test` → salta la integración con mock.
+> - Desactivar el workflow E2E: variable de repo `RSOUP_E2E_DISABLED=true`, o en ejecución manual `run_e2e=false`.
 
 Protocolo v1 documentado en `docs/protocolo.md` (repo del gestor).

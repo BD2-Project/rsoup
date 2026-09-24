@@ -6,8 +6,10 @@ description = "Driver Rust para SoupDB (gestor de base de datos multimodal)"
 license = "MIT"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
 anyhow = "1"
+ratatui = "0.29"
+crossterm = "0.28"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -15,3 +17,7 @@ tokio = { version = "1", features = ["full"] }
 [[bin]]
 name = "rsoup"
 path = "src/main.rs"
+
+[[bin]]
+name = "soup_tui"
+path = "src/bin/soup_tui.rs"
