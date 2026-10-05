@@ -45,20 +45,25 @@ jobs:
         working-directory: gestor
         run: uv sync --all-groups
 
-      - name: Sembrar base de datos (accounts)
+      - name: Sembrar base de datos (accounts + espacial)
         working-directory: gestor
         run: |
           mkdir -p /tmp/soupdb_e2e
-          uv run python -c "
+          uv run python - <<'PY'
           from engine.common.catalog import Catalog
           from engine.query import execute_sql
+
           c = Catalog('/tmp/soupdb_e2e')
           execute_sql('CREATE TABLE accounts (id INT, balance INT)', c)
           execute_sql('INSERT INTO accounts VALUES (1, 100)', c)
           execute_sql('INSERT INTO accounts VALUES (2, 200)', c)
+          execute_sql('CREATE TABLE lugares (id INT, nombre TEXT, ubicacion POINT)', c)
+          execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (1, 'Lima', POINT(-12.04, -77.03))", c)
+          execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (2, 'Cusco', POINT(-13.52, -71.97))", c)
+          execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (3, 'Arequipa', POINT(-16.40, -71.54))", c)
           c.close()
           print('seed ok')
-          "
+          PY
 
       - name: Arrancar el gestor (puerto 55499)
         working-directory: gestor
@@ -81,7 +86,7 @@ jobs:
           DRIVER_HOST: "127.0.0.1"
           DRIVER_PORT: "55499"
         run: |
-          for scenario in ping select commit rollback error; do
+          for scenario in ping select commit rollback error spatial; do
             ./target/debug/soup_tui --host "$DRIVER_HOST" --port "$DRIVER_PORT" --scenario "$scenario"
           done
 

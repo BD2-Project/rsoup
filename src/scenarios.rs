@@ -17,7 +17,7 @@ pub struct ScenarioResult {
 }
 
 /// Escenarios disponibles.
-pub const SCENARIOS: &[&str] = &["ping", "select", "commit", "rollback", "error"];
+pub const SCENARIOS: &[&str] = &["ping", "select", "commit", "rollback", "error", "spatial"];
 
 fn driver_err(error: impl std::fmt::Display) -> DriverError {
     DriverError {
@@ -34,6 +34,7 @@ pub async fn run(name: &str, host: &str, port: u16) -> Result<ScenarioResult, Dr
         "commit" => scenario_commit(host, port).await,
         "rollback" => scenario_rollback(host, port).await,
         "error" => scenario_error(host, port).await,
+        "spatial" => scenario_spatial(host, port).await,
         other => Err(DriverError {
             code: crate::protocol::ERR_GENERIC,
             message: format!("escenario desconocido: {other}"),
@@ -150,6 +151,50 @@ async fn scenario_error(host: &str, port: u16) -> Result<ScenarioResult, DriverE
             name: "error",
             ok: false,
             summary: "no se recibio ningun error".to_string(),
+        }),
+    }
+}
+
+async fn scenario_spatial(host: &str, port: u16) -> Result<ScenarioResult, DriverError> {
+    let mut manager = TransactionManager::connect(host, port)
+        .await
+        .map_err(driver_err)?;
+    let result = manager
+        .query(
+            "SELECT nombre, ubicacion FROM lugares \
+             ORDER BY distance(ubicacion, POINT(-12.04, -77.03)) LIMIT 2",
+        )
+        .await?;
+    match result {
+        QueryResult::ResultSet(rs) => {
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            let mut nombres: Vec<String> = Vec::new();
+            for row in &rs.rows {
+                let nombre = match &row[0] {
+                    Value::Text(text) => text.clone(),
+                    _ => String::new(),
+                };
+                if let Value::Point(x, y) = &row[1] {
+                    points.push((*x, *y));
+                    nombres.push(nombre);
+                }
+            }
+            let ok = !points.is_empty() && points.len() == nombres.len();
+            Ok(ScenarioResult {
+                name: "spatial",
+                ok,
+                summary: format!(
+                    "{} lugares con POINT decodificado | primero {:?} | {}",
+                    points.len(),
+                    points.first(),
+                    nombres.join(", "),
+                ),
+            })
+        }
+        QueryResult::Affected(_) => Ok(ScenarioResult {
+            name: "spatial",
+            ok: false,
+            summary: "SELECT espacial devolvio OK, se esperaba ResultSet".to_string(),
         }),
     }
 }
