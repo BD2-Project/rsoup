@@ -45,13 +45,14 @@ jobs:
         working-directory: gestor
         run: uv sync --all-groups
 
-      - name: Sembrar base de datos (accounts)
+      - name: Sembrar base de datos (accounts + espacial)
         working-directory: gestor
         run: |
           mkdir -p /tmp/soupdb_e2e
-          uv run python -c "
+          uv run python - <<'PY'
           from engine.common.catalog import Catalog
           from engine.query import execute_sql
+
           c = Catalog('/tmp/soupdb_e2e')
           execute_sql('CREATE TABLE accounts (id INT, balance INT)', c)
           execute_sql('INSERT INTO accounts VALUES (1, 100)', c)
@@ -62,7 +63,7 @@ jobs:
           execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (3, 'Arequipa', POINT(-16.40, -71.54))", c)
           c.close()
           print('seed ok')
-          "
+          PY
 
       - name: Arrancar el gestor (puerto 55499)
         working-directory: gestor
