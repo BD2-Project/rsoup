@@ -13,7 +13,7 @@ Todos los tipos se re-exportan desde la raíz (`rsoup::*`).
 | `DriverError { code, message }` | Error devuelto por el gestor (frame `ERROR`) |
 | `ResultSet { columns, rows }` · `Column` · `Value` | Modelo del resultado decodificado |
 
-`Value` (celda): `Null`, `Int(i32)`, `Float(f64)`, `Text(String)`, `Bool(bool)`.
+`Value` (celda): `Null`, `Int(i32)`, `Float(f64)`, `Text(String)`, `Bool(bool)`, `Point(f64, f64)` (x = longitud, y = latitud).
 
 ## `Connection` — conexión de bajo nivel
 

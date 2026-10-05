@@ -31,7 +31,7 @@ cargo run --bin soup_tui -- --list      # lista los escenarios
 cargo run --bin soup_tui -- --scenario ping   # headless (exit 0/1)
 ```
 
-Escenarios: `ping`, `select`, `commit`, `rollback`, `error` — verifica conexión, consulta, transacciones (COMMIT persiste / ROLLBACK no persiste) y errores. Conecta a `DRIVER_HOST`/`DRIVER_PORT` (default `127.0.0.1:55432`).
+Escenarios: `ping`, `select`, `commit`, `rollback`, `error`, `spatial` — verifica conexión, consulta, transacciones (COMMIT persiste / ROLLBACK no persiste), errores y consultas espaciales (decodificación de columnas `POINT` vía k-NN). Conecta a `DRIVER_HOST`/`DRIVER_PORT` (default `127.0.0.1:55432`).
 
 ## Uso desde Tauri (frontend SoupChef)
 
