@@ -33,6 +33,8 @@ fn print_result(result: &QueryResult) {
                         rsoup::Value::Float(f) => f.to_string(),
                         rsoup::Value::Text(t) => t.clone(),
                         rsoup::Value::Bool(b) => b.to_string(),
+                        // Latitud, longitud: el orden legible, al revés del interno.
+                        rsoup::Value::Point(x, y) => format!("{y}, {x}"),
                     })
                     .collect();
                 println!("    fila: {}", cells.join(", "));

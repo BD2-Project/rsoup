@@ -33,6 +33,7 @@ pub const TAG_INT: u8 = 0x01;
 pub const TAG_FLOAT: u8 = 0x02;
 pub const TAG_TEXT: u8 = 0x03;
 pub const TAG_BOOL: u8 = 0x04;
+pub const TAG_POINT: u8 = 0x05;
 
 // Códigos de tipo de columna
 pub const TYPE_INT: u8 = 0x01;
@@ -40,6 +41,7 @@ pub const TYPE_FLOAT: u8 = 0x02;
 pub const TYPE_VARCHAR: u8 = 0x03;
 pub const TYPE_TEXT: u8 = 0x04;
 pub const TYPE_BOOL: u8 = 0x05;
+pub const TYPE_POINT: u8 = 0x06;
 
 // Códigos de error
 pub const ERR_GENERIC: u8 = 0x00;
@@ -194,6 +196,9 @@ pub enum Value {
     Float(f64),
     Text(String),
     Bool(bool),
+    /// Coordenada geográfica: `x` es longitud e `y` latitud, igual que el
+    /// `Point(x, y)` del motor.
+    Point(f64, f64),
 }
 
 /// Resultado de una consulta (SELECT).
@@ -223,6 +228,11 @@ fn encode_value(out: &mut Vec<u8>, value: &Value) {
             let bytes = s.as_bytes();
             out.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
             out.extend_from_slice(bytes);
+        }
+        Value::Point(x, y) => {
+            out.push(TAG_POINT);
+            out.extend_from_slice(&x.to_be_bytes());
+            out.extend_from_slice(&y.to_be_bytes());
         }
     }
 }
@@ -271,6 +281,13 @@ fn decode_value(payload: &[u8], offset: &mut usize) -> Result<Value, ProtocolErr
             let b = payload[*offset] != 0;
             *offset += 1;
             Ok(Value::Bool(b))
+        }
+        TAG_POINT => {
+            let bytes = payload
+                .get(*offset..*offset + 16)
+                .ok_or_else(|| ProtocolError("point value truncated".into()))?;
+            *offset += 16;
+            Ok(Value::Point(f64_be(&bytes[..8]), f64_be(&bytes[8..])))
         }
         other => Err(ProtocolError(format!("unknown value tag {other}"))),
     }
@@ -429,6 +446,40 @@ mod tests {
             ],
         };
         assert_eq!(decode_resultset(&encode_resultset(&rs)).unwrap(), rs);
+    }
+
+    #[test]
+    fn resultset_with_point_column() {
+        // Sin esto el panel de mapa no recibe coordenadas: el motor resuelve la
+        // consulta espacial pero el cliente no puede decodificar la geometría.
+        let rs = ResultSet {
+            columns: vec![
+                Column {
+                    name: "id".into(),
+                    type_code: TYPE_INT,
+                    length: 0,
+                },
+                Column {
+                    name: "ubicacion".into(),
+                    type_code: TYPE_POINT,
+                    length: 0,
+                },
+            ],
+            rows: vec![
+                vec![Value::Int(1), Value::Point(-77.0428, -12.0464)],
+                vec![Value::Int(2), Value::Null],
+            ],
+        };
+        let decoded = decode_resultset(&encode_resultset(&rs)).unwrap();
+        assert_eq!(decoded, rs);
+        assert_eq!(decoded.rows[0][1], Value::Point(-77.0428, -12.0464));
+    }
+
+    #[test]
+    fn point_tag_differs_from_float() {
+        // Un punto no debe confundirse con dos flotantes sueltos al decodificar.
+        assert_ne!(TAG_POINT, TAG_FLOAT);
+        assert_ne!(TYPE_POINT, TYPE_FLOAT);
     }
 
     #[test]
