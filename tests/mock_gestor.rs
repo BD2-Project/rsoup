@@ -10,8 +10,9 @@ use std::sync::Mutex;
 
 use rsoup::connection_manager::{Connection, DriverError, QueryResult};
 use rsoup::protocol::{
-    encode_error, encode_resultset, Column, Frame, ResultSet, Value, OP_BEGIN, OP_COMMIT, OP_ERROR,
-    OP_OK, OP_PING, OP_PONG, OP_QUERY, OP_RESULT, OP_ROLLBACK,
+    decode_resultset, encode_error, encode_resultset, Column, Frame, ResultSet, Value, OP_BEGIN,
+    OP_COMMIT, OP_ERROR, OP_OK, OP_PING, OP_PONG, OP_QUERY, OP_RESULT, OP_ROLLBACK, TYPE_POINT,
+    TYPE_TEXT,
 };
 use rsoup::transaction_manager::{Transaction, TransactionManager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -262,4 +263,29 @@ async fn transaction_guard_runs_and_commits() {
 async fn error_variant_is_exported() {
     // Asegura que DriverError sea pública y usable como tipo de retorno.
     let _ = std::mem::size_of::<DriverError>();
+}
+
+#[test]
+fn point_value_roundtrip() {
+    let rs = ResultSet {
+        columns: vec![
+            Column {
+                name: "nombre".into(),
+                type_code: TYPE_TEXT,
+                length: 0,
+            },
+            Column {
+                name: "ubicacion".into(),
+                type_code: TYPE_POINT,
+                length: 0,
+            },
+        ],
+        rows: vec![vec![
+            Value::Text("Lima".into()),
+            Value::Point(-77.03, -12.04),
+        ]],
+    };
+    let encoded = encode_resultset(&rs);
+    let decoded = decode_resultset(&encoded).unwrap();
+    assert_eq!(decoded.rows[0][1], Value::Point(-77.03, -12.04));
 }

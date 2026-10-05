@@ -56,6 +56,10 @@ jobs:
           execute_sql('CREATE TABLE accounts (id INT, balance INT)', c)
           execute_sql('INSERT INTO accounts VALUES (1, 100)', c)
           execute_sql('INSERT INTO accounts VALUES (2, 200)', c)
+          execute_sql('CREATE TABLE lugares (id INT, nombre TEXT, ubicacion POINT)', c)
+          execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (1, 'Lima', POINT(-12.04, -77.03))", c)
+          execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (2, 'Cusco', POINT(-13.52, -71.97))", c)
+          execute_sql("INSERT INTO lugares (id, nombre, ubicacion) VALUES (3, 'Arequipa', POINT(-16.40, -71.54))", c)
           c.close()
           print('seed ok')
           "
@@ -81,7 +85,7 @@ jobs:
           DRIVER_HOST: "127.0.0.1"
           DRIVER_PORT: "55499"
         run: |
-          for scenario in ping select commit rollback error; do
+          for scenario in ping select commit rollback error spatial; do
             ./target/debug/soup_tui --host "$DRIVER_HOST" --port "$DRIVER_PORT" --scenario "$scenario"
           done
 
