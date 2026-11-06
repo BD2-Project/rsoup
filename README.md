@@ -2,6 +2,18 @@
 
 Driver **Rust** para SoupDB: conecta clientes al pool de conexiones del gestor (TCP/IP clásico, capa 4) usando el protocolo binario **v1.1**.
 
+## Instalación
+
+El crate se publica en crates.io como **`soupdb-driver`**; el nombre de librería se mantiene como `rsoup`, así que se importa igual:
+
+```bash
+cargo add soupdb-driver
+```
+
+```rust
+use rsoup::transaction_manager::TransactionManager;
+```
+
 ## Documentación
 
 | Página | Contenido |

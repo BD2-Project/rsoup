@@ -2,6 +2,11 @@
 
 Convención propia del driver, **independiente** de los números de versión del gestor SoupDB y del frontend SoupChef.
 
+## Publicación
+
+- **crates.io**: paquete **`soupdb-driver`** (el nombre `rsoup` ya estaba ocupado). El nombre de **librería** se mantiene como `rsoup`, por lo que los consumidores usan `use rsoup::...`.
+- La publicación la ejecuta `.github/workflows/release.yml` al empujar un tag `vX.Y.Z`; requiere el secret de repositorio `CARGO_REGISTRY_TOKEN`.
+
 ## Esquema
 
 - SemVer simplificado `vX.Y.Z` mediante **tags anotados** de Git.
