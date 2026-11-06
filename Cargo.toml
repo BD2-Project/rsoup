@@ -1,9 +1,23 @@
 [package]
-name = "rsoup"
+name = "soupdb-driver"
 version = "0.2.0"
 edition = "2021"
 description = "Driver Rust para SoupDB (gestor de base de datos multimodal)"
 license = "MIT"
+repository = "https://github.com/BD2-Project/rsoup"
+homepage = "https://github.com/BD2-Project/rsoup"
+documentation = "https://docs.rs/soupdb-driver"
+readme = "README.md"
+keywords = ["database", "driver", "soupdb", "tcp", "protocol"]
+categories = ["database", "network-programming"]
+publish = true
+
+# El nombre del paquete en crates.io es `soupdb-driver`, pero se conserva el
+# nombre de librería `rsoup` para no romper `use rsoup::...` en consumidores
+# (p. ej. SoupChef). Los bins también conservan sus nombres.
+[lib]
+name = "rsoup"
+path = "src/lib.rs"
 
 [features]
 default = []
