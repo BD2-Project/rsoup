@@ -7,10 +7,11 @@
 use std::io;
 
 use crate::protocol::{
-    decode_error, decode_ok, decode_resultset, encode_query, Frame, ResultSet, OP_BEGIN, OP_COMMIT,
-    OP_ERROR, OP_OK, OP_PING, OP_PONG, OP_QUERY, OP_RESULT, OP_ROLLBACK,
+    decode_error, decode_ok, decode_resultset_auto, encode_deallocate, encode_execute,
+    encode_prepare, encode_query, Frame, ResultSet, Value, OP_BEGIN, OP_COMMIT, OP_DEALLOCATE,
+    OP_ERROR, OP_EXECUTE, OP_OK, OP_PING, OP_PONG, OP_PREPARE, OP_QUERY, OP_RESULT, OP_ROLLBACK,
 };
-use crate::tcp_server::Socket;
+use crate::transport::Transport;
 
 /// Error devuelto por el gestor en un frame ERROR.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,19 +55,41 @@ pub enum QueryResult {
 
 /// Conexión del driver hacia el gestor.
 pub struct Connection {
-    socket: Socket,
+    transport: Transport,
     /// Número de transacciones activas reportadas por el gestor.
     active_transactions: u32,
 }
 
 impl Connection {
-    /// Conecta al gestor (host, puerto del pool).
+    /// Conecta al gestor (host, puerto del pool) por TCP plano.
     pub async fn connect(host: &str, port: u16) -> io::Result<Self> {
-        let socket = Socket::connect(host, port).await?;
+        let transport = Transport::connect(host, port).await?;
         Ok(Self {
-            socket,
+            transport,
             active_transactions: 0,
         })
+    }
+
+    /// Conecta al gestor por TLS (requiere la feature `tls`).
+    #[cfg(feature = "tls")]
+    pub async fn connect_tls(
+        host: &str,
+        port: u16,
+        config: tokio_rustls::rustls::ClientConfig,
+    ) -> io::Result<Self> {
+        let transport = Transport::connect_tls(host, port, config).await?;
+        Ok(Self {
+            transport,
+            active_transactions: 0,
+        })
+    }
+
+    /// Construye una conexión sobre un transporte ya abierto.
+    pub fn with_transport(transport: Transport) -> Self {
+        Self {
+            transport,
+            active_transactions: 0,
+        }
     }
 
     /// Ping/pong de handshake.
@@ -75,8 +98,8 @@ impl Connection {
             opcode: OP_PING,
             payload: Vec::new(),
         };
-        self.socket.send_frame(&frame).await?;
-        let response = self.socket.recv_frame().await?;
+        self.transport.send_frame(&frame).await?;
+        let response = self.transport.recv_frame().await?;
         if response.opcode != OP_PONG {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -92,7 +115,7 @@ impl Connection {
             opcode: OP_QUERY,
             payload: encode_query(sql),
         };
-        self.socket.send_frame(&frame).await?;
+        self.transport.send_frame(&frame).await?;
         self.read_query_result().await
     }
 
@@ -111,6 +134,40 @@ impl Connection {
         self.tx_command(OP_ROLLBACK).await
     }
 
+    /// Registra un prepared statement en el gestor (OP_PREPARE).
+    pub async fn prepare(&mut self, name: &str, sql: &str) -> Result<(), DriverError> {
+        let frame = Frame {
+            opcode: OP_PREPARE,
+            payload: encode_prepare(name, sql),
+        };
+        self.transport.send_frame(&frame).await?;
+        self.read_ok().await
+    }
+
+    /// Ejecuta un prepared statement con parámetros tipados (OP_EXECUTE).
+    pub async fn execute(
+        &mut self,
+        name: &str,
+        params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        let frame = Frame {
+            opcode: OP_EXECUTE,
+            payload: encode_execute(name, params),
+        };
+        self.transport.send_frame(&frame).await?;
+        self.read_query_result().await
+    }
+
+    /// Libera un prepared statement del gestor (OP_DEALLOCATE).
+    pub async fn deallocate(&mut self, name: &str) -> Result<(), DriverError> {
+        let frame = Frame {
+            opcode: OP_DEALLOCATE,
+            payload: encode_deallocate(name),
+        };
+        self.transport.send_frame(&frame).await?;
+        self.read_ok().await
+    }
+
     /// Número de transacciones activas en esta conexión (0 = autocommit).
     pub fn active_transactions(&self) -> u32 {
         self.active_transactions
@@ -121,8 +178,8 @@ impl Connection {
             opcode,
             payload: Vec::new(),
         };
-        self.socket.send_frame(&frame).await?;
-        let response = self.socket.recv_frame().await?;
+        self.transport.send_frame(&frame).await?;
+        let response = self.transport.recv_frame().await?;
         match response.opcode {
             OP_OK => {
                 self.active_transactions = match opcode {
@@ -143,11 +200,26 @@ impl Connection {
         }
     }
 
+    async fn read_ok(&mut self) -> Result<(), DriverError> {
+        let response = self.transport.recv_frame().await?;
+        match response.opcode {
+            OP_OK => Ok(()),
+            OP_ERROR => {
+                let (code, message) = decode_error(&response.payload)?;
+                Err(DriverError { code, message })
+            }
+            other => Err(DriverError {
+                code: crate::protocol::ERR_GENERIC,
+                message: format!("unexpected opcode {other} for command"),
+            }),
+        }
+    }
+
     async fn read_query_result(&mut self) -> Result<QueryResult, DriverError> {
-        let response = self.socket.recv_frame().await?;
+        let response = self.transport.recv_frame().await?;
         match response.opcode {
             OP_RESULT => {
-                let rs = decode_resultset(&response.payload)?;
+                let rs = decode_resultset_auto(&response.payload)?;
                 Ok(QueryResult::ResultSet(rs))
             }
             OP_OK => {

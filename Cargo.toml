@@ -1,15 +1,23 @@
 [package]
 name = "rsoup"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Driver Rust para SoupDB (gestor de base de datos multimodal)"
 license = "MIT"
+
+[features]
+default = []
+# Transporte TLS opt-in. El gestor todavía no hace handshake TLS (trabajo
+# futuro); esta feature deja el driver listo para cuando lo soporte.
+tls = ["dep:tokio-rustls", "dep:webpki-roots"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
 anyhow = "1"
 ratatui = "0.29"
 crossterm = "0.28"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"], optional = true }
+webpki-roots = { version = "0.26", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

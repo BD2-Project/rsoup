@@ -17,7 +17,9 @@ pub struct ScenarioResult {
 }
 
 /// Escenarios disponibles.
-pub const SCENARIOS: &[&str] = &["ping", "select", "commit", "rollback", "error", "spatial"];
+pub const SCENARIOS: &[&str] = &[
+    "ping", "select", "commit", "rollback", "error", "spatial", "prepared", "vector",
+];
 
 fn driver_err(error: impl std::fmt::Display) -> DriverError {
     DriverError {
@@ -35,6 +37,8 @@ pub async fn run(name: &str, host: &str, port: u16) -> Result<ScenarioResult, Dr
         "rollback" => scenario_rollback(host, port).await,
         "error" => scenario_error(host, port).await,
         "spatial" => scenario_spatial(host, port).await,
+        "prepared" => scenario_prepared(host, port).await,
+        "vector" => scenario_vector(host, port).await,
         other => Err(DriverError {
             code: crate::protocol::ERR_GENERIC,
             message: format!("escenario desconocido: {other}"),
@@ -195,6 +199,73 @@ async fn scenario_spatial(host: &str, port: u16) -> Result<ScenarioResult, Drive
             name: "spatial",
             ok: false,
             summary: "SELECT espacial devolvio OK, se esperaba ResultSet".to_string(),
+        }),
+    }
+}
+
+async fn scenario_prepared(host: &str, port: u16) -> Result<ScenarioResult, DriverError> {
+    let mut manager = TransactionManager::connect(host, port)
+        .await
+        .map_err(driver_err)?;
+    manager
+        .prepare(
+            "scenario_prepared",
+            "SELECT id, balance FROM accounts WHERE id = $1",
+        )
+        .await?;
+    let result = manager
+        .execute("scenario_prepared", &[Value::Int(1)])
+        .await?;
+    manager.deallocate("scenario_prepared").await?;
+    match result {
+        QueryResult::ResultSet(rs) => {
+            let ok = rs.rows.len() == 1
+                && matches!(rs.rows[0].first(), Some(Value::Int(value)) if *value == 1);
+            Ok(ScenarioResult {
+                name: "prepared",
+                ok,
+                summary: format!(
+                    "PREPARE/EXECUTE/DEALLOCATE -> {} fila(s) para id=1",
+                    rs.rows.len()
+                ),
+            })
+        }
+        QueryResult::Affected(n) => Ok(ScenarioResult {
+            name: "prepared",
+            ok: false,
+            summary: format!("EXECUTE devolvio OK ({n}), se esperaba ResultSet"),
+        }),
+    }
+}
+
+async fn scenario_vector(host: &str, port: u16) -> Result<ScenarioResult, DriverError> {
+    let mut manager = TransactionManager::connect(host, port)
+        .await
+        .map_err(driver_err)?;
+    // Tabla sembrada por el E2E cuando el gestor soporta VECTOR (v1.1).
+    let result = manager
+        .query("SELECT id, embedding FROM soup_vector_demo LIMIT 1")
+        .await?;
+    match result {
+        QueryResult::ResultSet(rs) => {
+            let vector_column = rs.columns.iter().any(|column| column.is_vector());
+            let vector_value = rs
+                .rows
+                .iter()
+                .any(|row| row.iter().any(|value| matches!(value, Value::Vector(_))));
+            let ok = vector_column && vector_value;
+            Ok(ScenarioResult {
+                name: "vector",
+                ok,
+                summary: format!(
+                    "columna VECTOR={vector_column} | valor decodificado={vector_value}"
+                ),
+            })
+        }
+        QueryResult::Affected(_) => Ok(ScenarioResult {
+            name: "vector",
+            ok: false,
+            summary: "SELECT vectorial devolvio OK, se esperaba ResultSet".to_string(),
         }),
     }
 }
