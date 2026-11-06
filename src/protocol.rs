@@ -583,6 +583,20 @@ pub fn decode_resultset(payload: &[u8]) -> Result<ResultSet, ProtocolError> {
     Ok(ResultSet { columns, rows })
 }
 
+/// Decodifica un RESULT autodetectando el header: intenta v1.1 y, si falla,
+/// cae al formato v1 legado. Permite que el driver hable con gestores previos
+/// a v1.1 durante la transición.
+pub fn decode_resultset_auto(payload: &[u8]) -> Result<ResultSet, ProtocolError> {
+    match decode_resultset(payload) {
+        Ok(resultset) => Ok(resultset),
+        Err(v11_error) => decode_resultset_v1(payload).map_err(|v1_error| {
+            ProtocolError(format!(
+                "cannot decode RESULT as v1.1 ({v11_error}) nor v1 ({v1_error})"
+            ))
+        }),
+    }
+}
+
 /// Codifica un RESULT con el header de columnas v1 (legado).
 pub fn encode_resultset_v1(rs: &ResultSet) -> Vec<u8> {
     let mut out = Vec::new();
@@ -823,6 +837,24 @@ mod tests {
         // El header v1 no es decodificable como v1.1 de forma fiable.
         assert_eq!(decoded.columns[0].type_name, TYPE_NAME_INT);
         assert_eq!(decoded.columns[0].encoding, ENC_NATIVE);
+    }
+
+    #[test]
+    fn decode_resultset_auto_handles_v1_and_v11() {
+        let rs = ResultSet {
+            columns: vec![
+                Column::native("id", TYPE_NAME_INT, 0),
+                Column::native("nombre", TYPE_NAME_TEXT, 0),
+            ],
+            rows: vec![vec![Value::Int(1), Value::Text("Lima".into())]],
+        };
+        // v1.1
+        assert_eq!(decode_resultset_auto(&encode_resultset(&rs)).unwrap(), rs);
+        // v1 legado (gestor previo a v1.1)
+        assert_eq!(
+            decode_resultset_auto(&encode_resultset_v1(&rs)).unwrap(),
+            rs
+        );
     }
 
     #[test]

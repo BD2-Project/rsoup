@@ -7,9 +7,9 @@
 use std::io;
 
 use crate::protocol::{
-    decode_error, decode_ok, decode_resultset, encode_deallocate, encode_execute, encode_prepare,
-    encode_query, Frame, ResultSet, Value, OP_BEGIN, OP_COMMIT, OP_DEALLOCATE, OP_ERROR,
-    OP_EXECUTE, OP_OK, OP_PING, OP_PONG, OP_PREPARE, OP_QUERY, OP_RESULT, OP_ROLLBACK,
+    decode_error, decode_ok, decode_resultset_auto, encode_deallocate, encode_execute,
+    encode_prepare, encode_query, Frame, ResultSet, Value, OP_BEGIN, OP_COMMIT, OP_DEALLOCATE,
+    OP_ERROR, OP_EXECUTE, OP_OK, OP_PING, OP_PONG, OP_PREPARE, OP_QUERY, OP_RESULT, OP_ROLLBACK,
 };
 use crate::transport::Transport;
 
@@ -219,7 +219,7 @@ impl Connection {
         let response = self.transport.recv_frame().await?;
         match response.opcode {
             OP_RESULT => {
-                let rs = decode_resultset(&response.payload)?;
+                let rs = decode_resultset_auto(&response.payload)?;
                 Ok(QueryResult::ResultSet(rs))
             }
             OP_OK => {
