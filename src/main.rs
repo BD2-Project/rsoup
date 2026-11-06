@@ -35,6 +35,13 @@ fn print_result(result: &QueryResult) {
                         rsoup::Value::Bool(b) => b.to_string(),
                         // Latitud, longitud: el orden legible, al revés del interno.
                         rsoup::Value::Point(x, y) => format!("{y}, {x}"),
+                        rsoup::Value::Vector(values) => {
+                            let cells: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+                            format!("[{}]", cells.join(", "))
+                        }
+                        rsoup::Value::Unknown { type_name, bytes } => {
+                            format!("<{type_name}: {} bytes>", bytes.len())
+                        }
                     })
                     .collect();
                 println!("    fila: {}", cells.join(", "));

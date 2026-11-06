@@ -20,6 +20,11 @@ match manager.query("SELECT * FROM accounts").await? {
                     Value::Float(f) => f.to_string(),
                     Value::Text(t) => t.clone(),
                     Value::Bool(b) => b.to_string(),
+                    Value::Point(x, y) => format!("{y}, {x}"),
+                    Value::Vector(values) => format!("{values:?}"),
+                    Value::Unknown { type_name, bytes } => {
+                        format!("<{type_name}: {} bytes>", bytes.len())
+                    }
                 })
                 .collect();
             println!("{}", cells.join(", "));
@@ -39,6 +44,53 @@ let mut manager = TransactionManager::connect("127.0.0.1", 55432).await?;
 manager.begin().await?;
 manager.query("INSERT INTO accounts VALUES (98, 8888)").await?;
 manager.commit().await?; // o manager.rollback().await? para deshacer
+```
+
+## Prepared statements
+
+```rust
+use rsoup::transaction_manager::TransactionManager;
+use rsoup::Value;
+
+let mut manager = TransactionManager::connect("127.0.0.1", 55432).await?;
+
+manager
+    .prepare("buscar_cuenta", "SELECT id, balance FROM accounts WHERE id = $1")
+    .await?;
+let result = manager.execute("buscar_cuenta", &[Value::Int(1)]).await?;
+manager.deallocate("buscar_cuenta").await?;
+```
+
+Los parámetros van **tipados** con `Value` (`Int`, `Float`, `Text`, `Bool`, `Point`, `Vector`, `Unknown`, `Null`).
+
+## Búsqueda vectorial (VECTOR)
+
+```rust
+use rsoup::Value;
+
+// El gestor responde una columna `VECTOR(n)` (encoding=fixed).
+if let QueryResult::ResultSet(rs) = manager
+    .query("SELECT id, embedding FROM imagenes LIMIT 1")
+    .await?
+{
+    assert!(rs.columns[1].is_vector());
+    if let Value::Vector(values) = &rs.rows[0][1] {
+        println!("dimension = {}", values.len());
+    }
+}
+```
+
+## Tipos extensibles (fallback opaco)
+
+Si el gestor devuelve un tipo que el driver no conoce (`encoding=opaque`), llega como bytes + nombre, sin romper la conexión:
+
+```rust
+match &rs.rows[0][1] {
+    Value::Unknown { type_name, bytes } => {
+        println!("tipo {type_name} ({} bytes)", bytes.len());
+    }
+    _ => {}
+}
 ```
 
 ## Integración con Tauri (frontend SoupChef)
@@ -63,10 +115,15 @@ async fn query_sql(
 }
 
 #[tauri::command]
-async fn begin_transaction(host: String, port: u16) -> Result<(), String> {
+async fn prepare_statement(
+    host: String,
+    port: u16,
+    name: String,
+    sql: String,
+) -> Result<(), String> {
     let mut manager = TransactionManager::connect(&host, port).await
         .map_err(|e| e.to_string())?;
-    manager.begin().await.map_err(|e| e.to_string())
+    manager.prepare(&name, &sql).await.map_err(|e| e.to_string())
 }
 ```
 
@@ -77,8 +134,19 @@ async fn begin_transaction(host: String, port: u16) -> Result<(), String> {
 ```ts
 import { invoke } from "@tauri-apps/api/core";
 
+// v1.1: `type_code` desaparece; la columna trae `type_name` + `encoding`.
+interface Column {
+  name: string;
+  type_name: string;   // "INT", "VECTOR", "MI_TIPO", ...
+  encoding: number;    // 0=native, 1=fixed, 2=variable, 3=opaque
+  size: number;
+  length: number;
+}
+
+// Value puede ser null | number | string | boolean | [number, number]
+// | number[] (VECTOR) | { type_name: string; bytes: number[] } (opaque).
 interface QueryResult {
-  columns: { name: string; type_code: number; length: number }[];
+  columns: Column[];
   rows: unknown[][];
 }
 

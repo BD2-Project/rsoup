@@ -1,6 +1,7 @@
-//! API de transacciones del cliente sobre el protocolo v1.
+//! API de transacciones del cliente sobre el protocolo v1.1.
 
 use crate::connection_manager::{Connection, DriverError, QueryResult};
+use crate::protocol::Value;
 
 /// Guard de transacción: toma una conexión y expone query/commit/rollback.
 /// Se debe cerrar con `commit` o `rollback` explícito.
@@ -21,13 +22,41 @@ impl<'a> Transaction<'a> {
 
     /// Ejecuta SQL dentro de la transacción.
     pub async fn query(&mut self, sql: &str) -> Result<QueryResult, DriverError> {
-        if !self.active {
-            return Err(DriverError {
+        self.ensure_active()?;
+        self.connection.query(sql).await
+    }
+
+    /// Registra un prepared statement dentro de la transacción.
+    pub async fn prepare(&mut self, name: &str, sql: &str) -> Result<(), DriverError> {
+        self.ensure_active()?;
+        self.connection.prepare(name, sql).await
+    }
+
+    /// Ejecuta un prepared statement con parámetros tipados.
+    pub async fn execute(
+        &mut self,
+        name: &str,
+        params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        self.ensure_active()?;
+        self.connection.execute(name, params).await
+    }
+
+    /// Libera un prepared statement.
+    pub async fn deallocate(&mut self, name: &str) -> Result<(), DriverError> {
+        self.ensure_active()?;
+        self.connection.deallocate(name).await
+    }
+
+    fn ensure_active(&self) -> Result<(), DriverError> {
+        if self.active {
+            Ok(())
+        } else {
+            Err(DriverError {
                 code: crate::protocol::ERR_TRANSACTION,
                 message: "transaction is not active".to_string(),
-            });
+            })
         }
-        self.connection.query(sql).await
     }
 
     /// Confirma la transacción.
@@ -73,6 +102,25 @@ impl TransactionManager {
     /// Ejecuta SQL en autocommit o dentro de la transacción activa.
     pub async fn query(&mut self, sql: &str) -> Result<QueryResult, DriverError> {
         self.connection.query(sql).await
+    }
+
+    /// Registra un prepared statement en el gestor (OP_PREPARE).
+    pub async fn prepare(&mut self, name: &str, sql: &str) -> Result<(), DriverError> {
+        self.connection.prepare(name, sql).await
+    }
+
+    /// Ejecuta un prepared statement con parámetros tipados (OP_EXECUTE).
+    pub async fn execute(
+        &mut self,
+        name: &str,
+        params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        self.connection.execute(name, params).await
+    }
+
+    /// Libera un prepared statement (OP_DEALLOCATE).
+    pub async fn deallocate(&mut self, name: &str) -> Result<(), DriverError> {
+        self.connection.deallocate(name).await
     }
 
     /// Inicia una transacción.

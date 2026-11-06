@@ -85,10 +85,20 @@ jobs:
         env:
           DRIVER_HOST: "127.0.0.1"
           DRIVER_PORT: "55499"
+          RSOUP_E2E_V11: ${{ vars.RSOUP_E2E_V11 }}
         run: |
           for scenario in ping select commit rollback error spatial; do
             ./target/debug/soup_tui --host "$DRIVER_HOST" --port "$DRIVER_PORT" --scenario "$scenario"
           done
+          # Escenarios v1.1 (prepared statements + VECTOR). Se activan cuando el
+          # gestor expone el contrato v1.1: crear la variable de repositorio
+          # RSOUP_E2E_V11=true y sembrar la tabla `soup_vector_demo`
+          # (id INT, embedding VECTOR(n)) con la sintaxis final del gestor.
+          if [ "$RSOUP_E2E_V11" = "true" ]; then
+            for scenario in prepared vector; do
+              ./target/debug/soup_tui --host "$DRIVER_HOST" --port "$DRIVER_PORT" --scenario "$scenario"
+            done
+          fi
 
       - name: Limpiar el gestor
         if: always()
